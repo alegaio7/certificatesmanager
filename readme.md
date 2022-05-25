@@ -58,13 +58,13 @@ The 3 endpoints can return the raw bytes encoded in Base64, or a .pfx file.
 		    SignerEmail = "info@mycompany.com",
 		    SignerOrganization = "My Company",
 		    OutputFormat = PersonCertificateRequestModel.FormatEnum.PFXRaw,
-		    SignatureAlgorithm = 	PersonCertificateRequestModel.SignatureAlgorithmEnum.RSA
+		    SignatureAlgorithm = PersonCertificateRequestModel.SignatureAlgorithmEnum.RSA
 	    };
 	    var json = JsonConvert.SerializeObject(req);
 	    var content = new StringContent(json, Encoding.UTF8, "application/json");
-	    var response = await 	client.PostAsync("api/Certificates/CreateSelfSignedCertificateForPerson", content);
+	    var response = await client.PostAsync("api/Certificates/CreateSelfSignedCertificateForPerson", content);
 	    if (response.StatusCode == System.Net.HttpStatusCode.OK) {
-		    using (var ms = new MemoryStream()) {
+			using (var ms = new MemoryStream()) {
 		        var s = await response.Content.ReadAsStreamAsync();
 		        s.CopyTo(ms);
 		        return ms.ToArray();
