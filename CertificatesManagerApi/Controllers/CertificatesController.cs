@@ -1,10 +1,14 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using CertificatesManager.Api;
+using CertificatesManager.Model;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CertificatesManager.Controllers
 {
@@ -33,15 +37,96 @@ namespace CertificatesManager.Controllers
             X509SignatureGenerator generator = default;
             X509Certificate2 certWithKey = default;
 
+            if (certRequest is null)
+                return BadRequest("The request cannot be null");
+
             var loc = "";
             var country = "";
+            var stdNameRegex = new Regex("^[\\w\\.\\- ]+$", RegexOptions.IgnoreCase); // for simplicity, special/accentuated chars are not allowed. modify if needed.
+            var emailRegex = new Regex("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$", RegexOptions.IgnoreCase); // simple regex..emails could be more complicated than that
+
+            if (string.IsNullOrEmpty(certRequest.Name))
+                return BadRequest(Strings.REQUEST_NAME_CANNOT_BE_NULL);
+            if (certRequest.Name.Length > Globals.CERT_REQUEST_NAME_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_NAME_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_NAME_SIZE_MAX));
+            if (!stdNameRegex.IsMatch(certRequest.Name))
+                return BadRequest(Strings.REQUEST_NAME_HAS_INVALID_CHARS);
+
+            if (string.IsNullOrEmpty(certRequest.Email))
+                return BadRequest(Strings.REQUEST_EMAIL_CANNOT_BE_NULL);
+            if (certRequest.Email.Length > Globals.CERT_REQUEST_EMAIL_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_EMAIL_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_EMAIL_SIZE_MAX));
+            if (!emailRegex.IsMatch(certRequest.Email))
+                return BadRequest(Strings.REQUEST_EMAIL_IS_INVALID);
+
+            if (string.IsNullOrEmpty(certRequest.Organization))
+                return BadRequest(Strings.REQUEST_ORG_CANNOT_BE_NULL);
+            if (certRequest.Organization.Length > Globals.CERT_REQUEST_ORG_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_ORG_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_ORG_SIZE_MAX));
+            if (!stdNameRegex.IsMatch(certRequest.Organization))
+                return BadRequest(Strings.REQUEST_ORG_HAS_INVALID_CHARS);
+
+            // signerCN
+            if (string.IsNullOrEmpty(certRequest.SignerCN))
+                return BadRequest(Strings.REQUEST_SIGNERCN_CANNOT_BE_NULL);
+            if (certRequest.SignerCN.Length > Globals.CERT_REQUEST_SIGNERCN_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_SIGNERCN_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_SIGNERCN_SIZE_MAX));
+            if (!stdNameRegex.IsMatch(certRequest.SignerCN))
+                return BadRequest(Strings.REQUEST_SIGNERCN_HAS_INVALID_CHARS);
+
+            // SignerEmail
+            if (string.IsNullOrEmpty(certRequest.SignerEmail))
+                return BadRequest(Strings.REQUEST_SIGNERMAIL_CANNOT_BE_NULL);
+            if (certRequest.SignerEmail.Length > Globals.CERT_REQUEST_SIGNEREMAIL_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_SIGNERMAIL_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_SIGNEREMAIL_SIZE_MAX));
+            if (!emailRegex.IsMatch(certRequest.SignerEmail))
+                return BadRequest(Strings.REQUEST_SIGNERMAIL_IS_INVALID);
+
+            // SignerOrganization
+            if (string.IsNullOrEmpty(certRequest.SignerOrganization))
+                return BadRequest(Strings.REQUEST_SIGNERORG_CANNOT_BE_NULL);
+            if (certRequest.SignerOrganization.Length > Globals.CERT_REQUEST_SIGNERORG_SIZE_MAX)
+                return BadRequest(string.Format(Strings.REQUEST_SIGNERORG_SIZE_CANNOT_EXCEED, Globals.CERT_REQUEST_SIGNERORG_SIZE_MAX));
+            if (!stdNameRegex.IsMatch(certRequest.SignerOrganization))
+                return BadRequest(Strings.REQUEST_SIGNERORG_HAS_INVALID_CHARS);
+
             if (!string.IsNullOrEmpty(certRequest.Location))
+            {
+                if (certRequest.Location.Length > Globals.CERT_REQUEST_LOCATION_SIZE_MAX)
+                    return BadRequest(string.Format(Strings.REQUEST_LOCATION_SIZE_EXCEEDED, Globals.CERT_REQUEST_LOCATION_SIZE_MAX));
+
+                if (!stdNameRegex.IsMatch(certRequest.Location))
+                    return BadRequest(Strings.REQUEST_LOCATION_HAS_INVALID_CHARS);
+
                 loc = $"l={certRequest.Location};st={certRequest.Location}";
+            }
 
             if (!string.IsNullOrEmpty(certRequest.Country))
+            {
+                try
+                {
+                    var cc = new CountryCodes(certRequest.Country);
+                }
+                catch (Exception)
+                {
+                    return BadRequest(Strings.REQUEST_COUNTRY_CODE_INVALID);
+                }
                 country = $"c={certRequest.Country}";
+            }
 
-            X500DistinguishedName distinguishedName = new X500DistinguishedName($"cn={certRequest.Name};email={certRequest.Email};o={certRequest.Organization};{loc};{country}");
+            var optParams = new StringBuilder();
+            if (!string.IsNullOrEmpty(loc))
+                optParams.Append(loc);
+            if (!string.IsNullOrEmpty(country))
+            {
+                if (optParams.Length > 0)
+                    optParams.Append(";");
+                optParams.Append(country);
+            }
+            if (optParams.Length > 0)
+                optParams.Insert(0, ";");
+
+            X500DistinguishedName distinguishedName = new X500DistinguishedName($"cn={certRequest.Name};email={certRequest.Email};o={certRequest.Organization}{optParams}");
 
             if (certRequest.SignatureAlgorithm == Enums.SignatureAlgorithm.ECDSA)
             {
@@ -136,7 +221,7 @@ namespace CertificatesManager.Controllers
                     // 1.3.6.1.4.1.43054.6 Certificate policy for document signing
                     // 1.3.6.1.5.5.7.3.8 Time staimping
                     // 1.3.6.1.5.5.7.3.1 Server Authentication
-                    // 1.3.6.1.5.5.7.3.2 Client Authentication 
+                    // 1.3.6.1.5.5.7.3.2 Client Authentication
                     */
 
                     request.CertificateExtensions.Add(sanBuilder.Build());

@@ -1,4 +1,4 @@
-﻿namespace CertificatesManager
+﻿namespace CertificatesManager.Model
 {
     public class ServiceCertificateRequestModel
     {
