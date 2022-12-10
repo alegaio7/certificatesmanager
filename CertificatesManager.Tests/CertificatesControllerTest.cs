@@ -356,6 +356,36 @@ namespace CertificateManager.Tests
             Assert.Equal(CertificatesManager.Api.Strings.REQUEST_COUNTRY_CODE_INVALID, ((BadRequestObjectResult)response).Value);
         }
 
+        [Fact]
+        public void CreateSelfSignedCertificateForPerson_ReturnRawOK()
+        {
+            // arrange
+            var controller = GetController();
+            var r = GetPersonCertificateValidRequest();
+
+            // act
+            r.OutputFormat = Enums.Format.PFXRaw;
+
+            // asset
+            var response = controller.CreateSelfSignedCertificateForPerson(r);
+            Assert.IsType<FileContentResult>(response);
+        }
+
+        [Fact]
+        public void CreateSelfSignedCertificateForPerson_ReturnBase64EncodedOK()
+        {
+            // arrange
+            var controller = GetController();
+            var r = GetPersonCertificateValidRequest();
+
+            // act
+            r.OutputFormat = Enums.Format.PFXBase64Encoded;
+
+            // asset
+            var response = controller.CreateSelfSignedCertificateForPerson(r);
+            Assert.IsType<OkObjectResult>(response);
+        }
+
         #region Private methods
         private CertificatesController GetController()
         {
